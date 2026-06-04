@@ -1,0 +1,3 @@
+[auth]
+password = "your-password-here"
+redirect_url = "https://example.com/"
