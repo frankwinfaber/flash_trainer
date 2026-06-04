@@ -11,6 +11,10 @@ A Streamlit-based flashcard study app for Dutch history exam preparation. It loa
 - **Multiple flashcard sets** — drop any number of CSV files into `data/` and pick which set to study from a dropdown.
 - **Completion screen** — when a session ends you see a full score breakdown and can restart with only the cards you scored poorly on.
 
+## Live App
+
+Hosted on Streamlit Cloud: [flashtrainer.streamlit.app](https://flashtrainer.streamlit.app)
+
 ## Getting Started
 
 ### Prerequisites
@@ -22,6 +26,18 @@ A Streamlit-based flashcard study app for Dutch history exam preparation. It loa
 ```bash
 pip install -r requirements.txt
 ```
+
+### Configuration
+
+The app requires two secrets for authentication. Create `.streamlit/secrets.toml` (already gitignored):
+
+```toml
+[auth]
+password = "your-password"
+redirect_url = "https://your-redirect-url.com/"
+```
+
+On Streamlit Cloud, add the same values via **Manage app → Secrets** in the dashboard.
 
 ### Running the app
 
@@ -40,6 +56,8 @@ flash_trainer/
 ├── data/
 │   ├── Flashcard questions Dutch history.docx   # Source document
 │   └── flashcards.csv          # Runtime data (section, question, answer)
+├── .streamlit/
+│   └── secrets.toml            # Local secrets (gitignored)
 ├── requirements.txt
 └── README.md
 ```
