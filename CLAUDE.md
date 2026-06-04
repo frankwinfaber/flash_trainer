@@ -17,8 +17,9 @@ streamlit run app.py                  # Launch the app (opens in browser)
 ## Architecture
 
 - **`convert_docx_to_csv.py`** — One-time script that parses `data/Flashcard questions Dutch history.docx` into `data/flashcards.csv` (columns: `section`, `question`, `answer`). Uses zipfile/xml parsing (no python-docx dependency at runtime).
-- **`app.py`** — Single-file Streamlit app. All state (queue, stats, per-card ratings) lives in `st.session_state` — purely session-based, nothing persisted to disk. Supports multiple CSV sets via auto-discovery of `data/*.csv`.
+- **`app.py`** — Single-file Streamlit app. All state (queue, stats, per-card ratings) lives in `st.session_state` — purely session-based, nothing persisted to disk. Supports multiple CSV sets via auto-discovery of `data/*.csv`. Auth secrets are read from `st.secrets`.
 - **`data/*.csv`** — Flashcard sets. Each CSV must have columns `section`, `question`, `answer`. The file name becomes the display name in the set picker.
+- **`.streamlit/secrets.toml`** — Local secrets file (gitignored). Required for local dev; mirrors the secrets set in the Streamlit Cloud dashboard for the hosted deployment.
 
 ## Key Design Decisions
 
