@@ -4,7 +4,6 @@ import glob
 import os
 import random
 import time
-import tomllib
 from pathlib import Path
 
 import pandas as pd
@@ -13,12 +12,8 @@ import streamlit as st
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-_config_path = Path(__file__).parent / "config.toml"
-with open(_config_path, "rb") as _f:
-    _config = tomllib.load(_f)
-
-AUTH_PASSWORD = _config["auth"]["password"]
-AUTH_REDIRECT_URL = _config["auth"]["redirect_url"]
+AUTH_PASSWORD = st.secrets["auth"]["password"]
+AUTH_REDIRECT_URL = st.secrets["auth"]["redirect_url"]
 
 # ---------------------------------------------------------------------------
 # Page config
