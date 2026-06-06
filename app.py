@@ -1,6 +1,9 @@
 """Flash Trainer – A Streamlit flashcard study app for Dutch History."""
 
+import base64
 import glob
+import gzip
+import json
 import os
 import random
 import time
@@ -126,6 +129,139 @@ def load_flashcards(path: str) -> pd.DataFrame:
 
 
 flashcard_sets = discover_flashcard_sets()
+
+# ---------------------------------------------------------------------------
+# URL-based session persistence
+# ---------------------------------------------------------------------------
+RESUME_KEY = "r"
+
+
+def _df_for_session() -> pd.DataFrame | None:
+    path = st.session_state.get("selected_csv")
+    return load_flashcards(path) if path else None
+
+
+def save_progress():
+    """Encode current session state into a URL query param."""
+    if st.session_state.get("finished"):
+        clear_progress()
+        return
+    df = _df_for_session()
+    if df is None:
+        return
+
+    def cards_to_idxs(cards):
+        result = []
+        for c in cards:
+            m = df.index[df["question"] == c["question"]].tolist()
+            if m:
+                result.append(m[0])
+        return result
+
+    def hist_to_idxs(hist):
+        out = {}
+        for q_text, ratings in hist.items():
+            m = df.index[df["question"] == q_text].tolist()
+            if m:
+                out[str(m[0])] = ratings
+        return out
+
+    ci = st.session_state.current_idx
+    seen_idxs = []
+    for q_text in st.session_state.stats_seen:
+        m = df.index[df["question"] == q_text].tolist()
+        if m:
+            seen_idxs.append(m[0])
+
+    payload = {
+        "c": st.session_state.selected_csv,
+        "q": cards_to_idxs(st.session_state.queue[ci:]),
+        "e": cards_to_idxs(st.session_state.end_pool),
+        "a": cards_to_idxs(st.session_state.active_cards),
+        "rn": st.session_state.round_number,
+        "sr": st.session_state.stats_reviews,
+        "sg": st.session_state.stats_ratings,
+        "ss": seen_idxs,
+        "st": st.session_state.stats_total,
+        "pe": int(st.session_state.paused_elapsed or 0),
+        "ch": hist_to_idxs(st.session_state.card_history),
+        "rh": hist_to_idxs(st.session_state.round_card_history),
+        "rf": st.session_state.round_finished,
+    }
+    raw = json.dumps(payload, separators=(",", ":")).encode()
+    compressed = gzip.compress(raw, compresslevel=9)
+    encoded = base64.urlsafe_b64encode(compressed).decode()
+    st.query_params[RESUME_KEY] = encoded
+
+
+def clear_progress():
+    if RESUME_KEY in st.query_params:
+        del st.query_params[RESUME_KEY]
+
+
+def try_restore_progress() -> bool:
+    """Try to restore session from URL param. Returns True if successful."""
+    if RESUME_KEY not in st.query_params:
+        return False
+    try:
+        encoded = st.query_params[RESUME_KEY]
+        missing = len(encoded) % 4
+        if missing:
+            encoded += "=" * (4 - missing)
+        raw = gzip.decompress(base64.urlsafe_b64decode(encoded))
+        payload = json.loads(raw.decode())
+
+        csv_path = payload.get("c", "")
+        if csv_path not in flashcard_sets.values():
+            return False
+
+        df = load_flashcards(csv_path)
+
+        def idx_to_card(i):
+            return df.iloc[i].to_dict() if 0 <= i < len(df) else None
+
+        def idxs_to_cards(idxs):
+            return [c for i in idxs if (c := idx_to_card(i)) is not None]
+
+        def idxs_hist(hist):
+            out = {}
+            for str_i, ratings in hist.items():
+                card = idx_to_card(int(str_i))
+                if card:
+                    out[card["question"]] = ratings
+            return out
+
+        seen = set()
+        for i in payload.get("ss", []):
+            card = idx_to_card(i)
+            if card:
+                seen.add(card["question"])
+
+        sg = {int(k): v for k, v in payload.get("sg", {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}).items()}
+
+        st.session_state.selected_csv = csv_path
+        st.session_state.queue = idxs_to_cards(payload.get("q", []))
+        st.session_state.end_pool = idxs_to_cards(payload.get("e", []))
+        st.session_state.active_cards = idxs_to_cards(payload.get("a", []))
+        st.session_state.current_idx = 0
+        st.session_state.show_answer = False
+        st.session_state.rated = False
+        st.session_state.round_number = payload.get("rn", 1)
+        st.session_state.stats_reviews = payload.get("sr", 0)
+        st.session_state.stats_ratings = sg
+        st.session_state.stats_seen = seen
+        st.session_state.stats_total = payload.get("st", 0)
+        st.session_state.paused_elapsed = payload.get("pe", 0)
+        st.session_state.start_time = time.time()
+        st.session_state.card_history = idxs_hist(payload.get("ch", {}))
+        st.session_state.round_card_history = idxs_hist(payload.get("rh", {}))
+        st.session_state.round_finished = payload.get("rf", False)
+        st.session_state.finished = False
+        st.session_state.started = True
+        return True
+    except Exception:
+        return False
+
 
 # ---------------------------------------------------------------------------
 # Session state initialisation
@@ -375,6 +511,7 @@ u();setInterval(u,1000);
 
         st.markdown("---")
         if st.button("Restart", use_container_width=True):
+            clear_progress()
             for key in defaults:
                 if key == "authenticated":
                     continue
@@ -388,6 +525,7 @@ u();setInterval(u,1000);
 
 def reset_to_home():
     """Reset all state back to the home / set-selection screen."""
+    clear_progress()
     for key in defaults:
         if key == "authenticated":
             continue
@@ -435,6 +573,9 @@ st.markdown(
 )
 
 if not st.session_state.started:
+    if try_restore_progress():
+        st.rerun()
+
     # ---- Flashcard set selector ----
     if len(flashcard_sets) == 0:
         st.error("No CSV files found in `data/`. Add at least one flashcard CSV.")
@@ -480,6 +621,7 @@ if not st.session_state.started:
     ):
         st.session_state.selected_csv = csv_path
         build_queue(df, selected)
+        save_progress()
         st.rerun()
 
 elif st.session_state.round_finished:
@@ -562,6 +704,7 @@ elif st.session_state.round_finished:
             use_container_width=True,
         ):
             start_next_round(list(pool))
+            save_progress()
             st.rerun()
     with col_b:
         if st.button(
@@ -570,6 +713,7 @@ elif st.session_state.round_finished:
             disabled=(len(weak_cards) == 0),
         ):
             start_next_round(weak_cards)
+            save_progress()
             st.rerun()
 
     if st.button("Back to home", use_container_width=True):
@@ -659,6 +803,7 @@ elif st.session_state.finished:
                 disabled=(len(weak_cards) == 0),
             ):
                 build_queue_from_cards(weak_cards)
+                save_progress()
                 st.rerun()
         with col_b:
             if st.button("Back to home", use_container_width=True):
@@ -722,4 +867,5 @@ else:
                     "Submit & Next", type="primary", use_container_width=True
                 ):
                     advance(rating)
+                    save_progress()
                     st.rerun()
