@@ -413,7 +413,7 @@ def render_sidebar():
             if st.session_state.start_time is not None:
                 # Clock is running: JS counts live from a virtual start that
                 # accounts for previously accumulated time
-                virtual_start = time.time() - paused
+                virtual_start = st.session_state.start_time - paused
                 timer_html = f"""<!DOCTYPE html>
 <html><body style="margin:0;font-family:sans-serif;overflow:hidden;">
 <div style="background:#2c3e50;color:#ecf0f1;padding:1rem;
